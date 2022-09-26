@@ -2,6 +2,7 @@
 	<form @submit.prevent="onSubmit">
 		<v-input v-model="email" autofocus autocomplete="username" type="email" :placeholder="t('email')" />
 		<v-input v-model="password" type="password" autocomplete="current-password" :placeholder="t('password')" />
+		<vue-hcaptcha sitekey="e45cae2e-2906-45bf-abe7-9424392c31c6" @verify="onVerify"></vue-hcaptcha>
 
 		<transition-expand>
 			<v-input v-if="requiresTFA" v-model="otp" type="text" :placeholder="t('otp')" autofocus />
@@ -11,7 +12,7 @@
 			{{ errorFormatted }}
 		</v-notice>
 		<div class="buttons">
-			<v-button type="submit" :loading="loggingIn" large>{{ t('sign_in') }}</v-button>
+			<v-button type="submit" :loading="loggingIn" large :disabled="!hCaptchaVerified">{{ t('sign_in') }}</v-button>
 			<router-link to="/reset-password" class="forgot-password">
 				{{ t('forgot_password') }}
 			</router-link>
@@ -20,6 +21,7 @@
 </template>
 
 <script lang="ts">
+import VueHcaptcha from '@hcaptcha/vue3-hcaptcha';
 import { useI18n } from 'vue-i18n';
 import { defineComponent, ref, computed, watch, toRefs } from 'vue';
 import { useRouter } from 'vue-router';
@@ -31,10 +33,12 @@ import { useUserStore } from '@/stores/user';
 type Credentials = {
 	email: string;
 	password: string;
+	captchaToken: string;
 	otp?: string;
 };
 
 export default defineComponent({
+	components: { VueHcaptcha },
 	props: {
 		provider: {
 			type: String,
@@ -54,6 +58,9 @@ export default defineComponent({
 		const otp = ref<string | null>(null);
 		const requiresTFA = ref(false);
 		const userStore = useUserStore();
+		const hCaptchaVerified = ref(false);
+		const hCaptchaToken = ref<string | null>(null);
+		const hCaptchaEKey = ref<string | null>(null);
 
 		watch(email, () => {
 			if (requiresTFA.value === true) requiresTFA.value = false;
@@ -90,10 +97,14 @@ export default defineComponent({
 			translateAPIError,
 			otp,
 			requiresTFA,
+			onVerify,
+			hCaptchaVerified,
+			hCaptchaToken,
+			hCaptchaEKey,
 		};
 
 		async function onSubmit() {
-			if (email.value === null || password.value === null) return;
+			if (email.value === null || password.value === null || !hCaptchaVerified.value) return;
 
 			try {
 				loggingIn.value = true;
@@ -101,6 +112,7 @@ export default defineComponent({
 				const credentials: Credentials = {
 					email: email.value,
 					password: password.value,
+					captchaToken: hCaptchaToken.value,
 				};
 
 				if (otp.value) {
@@ -124,6 +136,12 @@ export default defineComponent({
 			} finally {
 				loggingIn.value = false;
 			}
+		}
+
+		function onVerify(tokenStr: string, eKey: string) {
+			hCaptchaVerified.value = true;
+			hCaptchaToken.value = tokenStr;
+			hCaptchaEKey.value = eKey;
 		}
 	},
 });
